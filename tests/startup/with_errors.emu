@@ -1,0 +1,10 @@
+# Стартовый скрипт с ошибками: ошибочные строки пропускаются
+ls first
+unknown_command arg
+ls "unclosed quote
+cd second
+exit 1 2
+
+ls third
+exit 7
+ls never-executed

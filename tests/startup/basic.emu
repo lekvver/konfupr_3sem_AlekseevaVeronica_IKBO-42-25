@@ -1,0 +1,7 @@
+# Стартовый скрипт: основные возможности эмулятора
+ls
+ls -l /tmp
+cd $HOME
+cd "$HOME/my docs"
+cd '$HOME'
+exit
