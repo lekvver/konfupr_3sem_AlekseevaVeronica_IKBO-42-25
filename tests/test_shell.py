@@ -53,6 +53,11 @@ class StubCommandsTest(unittest.TestCase):
         shell, _ = run_lines("cd $HOME", "exit", env={"HOME": "/home/u"})
         self.assertEqual(shell.out.getvalue(), "cd: args=['/home/u']\n")
 
+    def test_unset_variable_gives_no_argument(self):
+        """Неизвестная переменная не создаёт пустой аргумент."""
+        shell, _ = run_lines("ls $NOPE x", "exit")
+        self.assertEqual(shell.out.getvalue(), "ls: args=['x']\n")
+
     def test_quoted_argument_is_one_word(self):
         """Аргумент в кавычках передаётся одним словом."""
         shell, _ = run_lines('ls "a b" c', "exit")

@@ -63,16 +63,25 @@ def read_bare(line: str, pos: int, env: Mapping[str, str]) -> tuple[str, int]:
     return expand_vars(line[pos:end], env), end
 
 
-def read_word(line: str, pos: int, env: Mapping[str, str]) -> tuple[str, int]:
-    """Читает одно слово, которое может состоять из нескольких фрагментов."""
+def read_word(
+    line: str, pos: int, env: Mapping[str, str]
+) -> tuple[str | None, int]:
+    """Читает одно слово, которое может состоять из нескольких фрагментов.
+
+    Как в bash, слово без кавычек, которое после подстановки переменных
+    стало пустым, пропадает: вместо него возвращается None.
+    """
     pieces = []
+    quoted = False
     while pos < len(line) and not line[pos].isspace():
         if line[pos] in QUOTES:
             text, pos = read_quoted(line, pos, env)
+            quoted = True
         else:
             text, pos = read_bare(line, pos, env)
         pieces.append(text)
-    return "".join(pieces), pos
+    word = "".join(pieces)
+    return (word if word or quoted else None), pos
 
 
 def parse_line(line: str, env: Mapping[str, str]) -> list[str]:
@@ -80,12 +89,13 @@ def parse_line(line: str, env: Mapping[str, str]) -> list[str]:
 
     Слова разделяются пробелами. Слово, начинающееся с #, открывает
     комментарий до конца строки. Результат подстановки переменной
-    на слова не разбивается.
+    на слова не разбивается, а пустой результат без кавычек исчезает.
     """
     words = []
     pos = skip_spaces(line, 0)
     while pos < len(line) and line[pos] != COMMENT_CHAR:
         word, pos = read_word(line, pos, env)
-        words.append(word)
+        if word is not None:
+            words.append(word)
         pos = skip_spaces(line, pos)
     return words

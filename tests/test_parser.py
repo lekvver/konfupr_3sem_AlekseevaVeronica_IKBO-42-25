@@ -68,6 +68,19 @@ class ParseLineTest(unittest.TestCase):
         env = {"DIR": "my dir"}
         self.assertEqual(parse_line("cd $DIR", env), ["cd", "my dir"])
 
+    def test_empty_expansion_disappears(self):
+        """Слово из одной пустой переменной пропадает, как в bash."""
+        self.assertEqual(parse_line("ls $NOPE x", ENV), ["ls", "x"])
+        self.assertEqual(parse_line("ls $EMPTY", ENV), ["ls"])
+
+    def test_quoted_empty_expansion_stays(self):
+        """В кавычках пустое значение остаётся пустым аргументом."""
+        self.assertEqual(parse_line('ls "$NOPE"', ENV), ["ls", ""])
+
+    def test_empty_expansion_inside_word(self):
+        """Пустая переменная внутри слова даёт только остальной текст."""
+        self.assertEqual(parse_line("ls a$NOPE", ENV), ["ls", "a"])
+
     def test_comment(self):
         """Текст после # в начале слова считается комментарием."""
         self.assertEqual(parse_line("ls dir # note", ENV), ["ls", "dir"])
