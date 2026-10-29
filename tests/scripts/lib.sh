@@ -59,6 +59,28 @@ reject_output() {
     fi
 }
 
+# Проверяет, что два каталога совпадают по именам и содержимому файлов.
+expect_same_tree() {
+    if ! diff -r "$1" "$2" > /dev/null; then
+        fail "directories differ: $1 and $2"
+        diff -r "$1" "$2"
+    fi
+}
+
+# Проверяет, что файл существует.
+expect_file() {
+    if [ ! -f "$1" ]; then
+        fail "file not found: $1"
+    fi
+}
+
+# Проверяет, что каталог существует.
+expect_dir() {
+    if [ ! -d "$1" ]; then
+        fail "directory not found: $1"
+    fi
+}
+
 # Завершает сценарий: код 1, если хотя бы одна проверка не прошла.
 finish() {
     if [ "${FAILED}" -eq 0 ]; then

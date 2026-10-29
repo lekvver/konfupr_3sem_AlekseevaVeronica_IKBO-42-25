@@ -1,0 +1,39 @@
+# Стартовый скрипт для проверки всех команд эмулятора (этапы 1-3).
+# Нужны переменные окружения (их задаёт tests/scripts/stage3_all_commands.sh):
+#   VFS_SRC  - каталог-источник VFS, переданный в --vfs
+#   VFS_OUT  - несуществующий каталог для сохранения VFS
+#   VFS_FILE - путь к существующему обычному файлу
+
+# --- ls и cd: заглушки выводят имя и аргументы ---
+ls
+ls -l /tmp
+cd docs
+cd ..
+
+# --- раскрытие переменных окружения ---
+cd $HOME
+cd ${HOME}/projects
+cd "$HOME/my docs"
+cd '$HOME'
+ls $UNSET_VARIABLE_XYZ done
+
+# --- кавычки и комментарии ---
+ls "two words" 'single $quoted' "" # комментарий в конце строки
+
+# --- ошибки: неизвестная команда и ошибка разбора ---
+frobnicate --now
+ls "unclosed quote
+
+# --- vfs-save: успешное сохранение VFS на диск ---
+vfs-save $VFS_OUT
+
+# --- vfs-save: ошибки ---
+vfs-save
+vfs-save one two
+vfs-save $VFS_OUT
+vfs-save $VFS_FILE
+vfs-save $VFS_SRC
+
+# --- exit: лишние аргументы и нормальное завершение с кодом 3 ---
+exit 1 2
+exit 3

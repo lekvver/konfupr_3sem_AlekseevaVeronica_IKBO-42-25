@@ -11,6 +11,7 @@ from typing import Callable, Mapping, TextIO
 from .commands import COMMANDS, EXIT_OK
 from .errors import ShellError
 from .parser import parse_line
+from .vfs import Vfs
 
 DEFAULT_USER = "user"
 
@@ -34,6 +35,7 @@ class Shell:
         read_line: Callable[[str], str] = input,
         out: TextIO | None = None,
         err: TextIO | None = None,
+        vfs: Vfs | None = None,
     ) -> None:
         """Создаёт оболочку; параметры позволяют подменить ввод и вывод."""
         self.env = dict(os.environ if env is None else env)
@@ -41,6 +43,7 @@ class Shell:
         self.read_line = read_line
         self.out = sys.stdout if out is None else out
         self.err = sys.stderr if err is None else err
+        self.vfs = Vfs.default() if vfs is None else vfs
         self.exit_code: int | None = None
         self.commands = dict(COMMANDS)
 

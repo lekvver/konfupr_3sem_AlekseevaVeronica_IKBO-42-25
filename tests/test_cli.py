@@ -100,5 +100,64 @@ class MainTest(unittest.TestCase):
         self.assertIn("cannot read startup script", err)
 
 
+class MainVfsTest(unittest.TestCase):
+    """Загрузка VFS при запуске эмулятора."""
+
+    def setUp(self):
+        """Создаёт временный каталог и каталог-источник VFS."""
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.vfs_dir = os.path.join(self.tmp.name, "vfs")
+        os.makedirs(os.path.join(self.vfs_dir, "dir"))
+        with open(os.path.join(self.vfs_dir, "f.txt"), "w") as stream:
+            stream.write("data")
+
+    def script(self, text):
+        """Записывает стартовый скрипт и возвращает его путь."""
+        path = os.path.join(self.tmp.name, "start.emu")
+        with open(path, "w", encoding="utf-8") as stream:
+            stream.write(text)
+        return path
+
+    def test_vfs_is_loaded(self):
+        """Сообщение о загрузке содержит путь и число элементов."""
+        script = self.script("exit\n")
+        code, out, _ = run_main(["--vfs", self.vfs_dir, "--script", script])
+        self.assertEqual(code, 0)
+        expected = f"[info] VFS loaded from {self.vfs_dir}: "
+        self.assertIn(expected + "1 directories, 1 files", out)
+
+    def test_default_vfs(self):
+        """Без --vfs создаётся VFS по умолчанию."""
+        code, out, _ = run_main(["--script", self.script("exit\n")])
+        self.assertEqual(code, 0)
+        self.assertIn("no VFS path given, default in-memory VFS", out)
+
+    def test_missing_vfs(self):
+        """Нет каталога VFS: сообщение об ошибке, код 1, скрипт не запущен."""
+        missing = os.path.join(self.tmp.name, "nope")
+        script = self.script("ls should-not-run\nexit\n")
+        code, out, err = run_main(["--vfs", missing, "--script", script])
+        self.assertEqual(code, 1)
+        self.assertIn("error: VFS not found", err)
+        self.assertNotIn("should-not-run", out)
+
+    def test_vfs_is_not_a_directory(self):
+        """Файл вместо каталога: ошибка неверного формата, код 1."""
+        path = os.path.join(self.vfs_dir, "f.txt")
+        code, _, err = run_main(["--vfs", path])
+        self.assertEqual(code, 1)
+        self.assertIn("error: invalid VFS format", err)
+
+    def test_vfs_save_from_script(self):
+        """vfs-save из скрипта сохраняет загруженную VFS."""
+        out_dir = os.path.join(self.tmp.name, "saved")
+        script = self.script(f'vfs-save "{out_dir}"\nexit\n')
+        code, _, _ = run_main(["--vfs", self.vfs_dir, "--script", script])
+        self.assertEqual(code, 0)
+        self.assertTrue(os.path.isfile(os.path.join(out_dir, "f.txt")))
+        self.assertTrue(os.path.isdir(os.path.join(out_dir, "dir")))
+
+
 if __name__ == "__main__":
     unittest.main()

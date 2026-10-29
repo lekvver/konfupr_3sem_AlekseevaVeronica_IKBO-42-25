@@ -7,7 +7,8 @@
 
 Эмулятор командной строки UNIX-подобной ОС: консольное приложение (CLI),
 которое показывает приглашение к вводу, разбирает введённые строки и
-выполняет команды. Язык реализации — Python 3.9+, сторонние библиотеки
+выполняет команды над виртуальной файловой системой (VFS), которая целиком
+хранится в памяти. Язык реализации — Python 3.9+, сторонние библиотеки
 не нужны.
 
 Ход работы по этапам (каждый этап — отдельный коммит):
@@ -16,7 +17,7 @@
 |------|----------------------------------------------|--------|
 | 1    | REPL: приглашение, парсер, команды-заглушки  | готово |
 | 2    | Конфигурация: параметры запуска и скрипт     | готово |
-| 3    | Виртуальная файловая система (VFS)           | —      |
+| 3    | Виртуальная файловая система (VFS)           | готово |
 
 В репозитории также лежит практика 1 (`практика1`, `практика 1.md`).
 
@@ -27,6 +28,7 @@ src/shell_emulator/   исходный код эмулятора
 tests/                модульные тесты (test_*.py)
 tests/scripts/        bash-скрипты, которые запускают эмулятор из реальной ОС
 tests/startup/        стартовые скрипты на языке эмулятора (*.emu)
+tests/vfs/            каталоги для проверки загрузки VFS
 Makefile, run.sh      запуск и тесты
 ```
 
@@ -36,7 +38,7 @@ Makefile, run.sh      запуск и тесты
 
 | Параметр        | Описание                                  | По умолчанию |
 |-----------------|-------------------------------------------|--------------|
-| `--vfs ПУТЬ`    | Путь к физическому расположению VFS       | не задан     |
+| `--vfs ПУТЬ`    | Каталог на диске, из которого загружается VFS | VFS по умолчанию |
 | `--script ПУТЬ` | Путь к стартовому скрипту                 | не задан     |
 | `-h`, `--help`  | Справка                                   |              |
 
@@ -44,12 +46,36 @@ Makefile, run.sh      запуск и тесты
 
 ```
 [debug] startup parameters:
-[debug]   vfs    = /home/student/vfs
+[debug]   vfs    = tests/vfs/deep
 [debug]   script = tests/startup/basic.emu
 ```
 
 Незаданный параметр выводится как `<not set>`. Неизвестный параметр или
 параметр без значения: сообщение об использовании и код возврата 2.
+
+Порядок запуска: параметры, загрузка VFS, стартовый скрипт, интерактивный
+диалог.
+
+### Виртуальная файловая система (VFS)
+
+- Источник VFS — каталог на диске (`--vfs ПУТЬ`). Его дерево каталогов и
+  файлов целиком читается в память. Дальше все операции идут только в
+  памяти, исходные данные на диске не распаковываются и не меняются.
+- Файлы хранятся как байты, поэтому поддерживается любое содержимое.
+- Если `--vfs` не указан, в памяти создаётся VFS по умолчанию:
+  `/etc/motd`, `/home/user`, `/tmp`.
+- После загрузки выводится строка `[info]` с источником VFS и числом
+  каталогов (без корневого) и файлов.
+- Ошибки загрузки: сообщение `error: ...` и код возврата 1, стартовый скрипт
+  не запускается.
+
+| Ситуация                                | Сообщение                                      |
+|-----------------------------------------|------------------------------------------------|
+| путь не существует                      | `VFS not found: ПУТЬ`                          |
+| путь — не каталог                       | `invalid VFS format: not a directory: ПУТЬ`    |
+| внутри каталога символическая ссылка    | `invalid VFS format: symbolic link is not supported: ПУТЬ` |
+| внутри каталога специальный файл        | `invalid VFS format: unsupported file type: ПУТЬ` |
+| нельзя прочитать каталог или файл       | `cannot read ПУТЬ: причина`                    |
 
 ### Стартовый скрипт
 
@@ -93,13 +119,29 @@ Makefile, run.sh      запуск и тесты
 
 ### Команды
 
-| Команда    | Описание                                                        |
-|------------|-----------------------------------------------------------------|
-| `ls [...]` | Заглушка: выводит своё имя и аргументы                          |
-| `cd [...]` | Заглушка: выводит своё имя и аргументы                          |
-| `exit [N]` | Завершает эмулятор с кодом `N` (по умолчанию 0, берётся по модулю 256) |
+| Команда           | Описание                                                  |
+|-------------------|-----------------------------------------------------------|
+| `ls [...]`        | Заглушка: выводит своё имя и аргументы                    |
+| `cd [...]`        | Заглушка: выводит своё имя и аргументы                    |
+| `vfs-save ПУТЬ`   | Сохраняет состояние VFS на диск в исходном формате        |
+| `exit [N]`        | Завершает эмулятор с кодом `N` (по умолчанию 0, по модулю 256) |
 
 Формат вывода заглушек: `имя: args=[список аргументов]`.
+
+**`vfs-save ПУТЬ`** записывает VFS на диск в исходном формате, то есть как
+дерево каталогов и файлов с теми же именами и содержимым (права доступа и
+время изменения не сохраняются). Недостающие каталоги пути создаются. Чтобы
+не затереть чужие данные, путь должен быть новым или указывать на пустой
+каталог. При успехе выводится `VFS saved to ПУТЬ`.
+
+| Ситуация                                      | Сообщение                                      |
+|-----------------------------------------------|------------------------------------------------|
+| нет аргумента                                 | `vfs-save: missing path operand`               |
+| больше одного аргумента                       | `vfs-save: too many arguments`                 |
+| путь — существующий файл                      | `vfs-save: cannot save VFS: ПУТЬ already exists and is not a directory` |
+| каталог не пуст                               | `vfs-save: cannot save VFS: directory ПУТЬ is not empty` |
+| путь совпадает с каталогом-источником или лежит в нём | `vfs-save: cannot save VFS: ПУТЬ is the source directory or inside it` |
+| ошибка записи на диск                         | `vfs-save: cannot save VFS to ПУТЬ: причина`   |
 
 ### Обработка ошибок
 
@@ -108,7 +150,8 @@ Makefile, run.sh      запуск и тесты
 - неизвестная команда: `foo: command not found`;
 - незакрытая кавычка: `syntax error: unexpected end of line, ...`;
 - `exit abc`: `exit: abc: numeric argument required`, завершение с кодом 2;
-- `exit 1 2`: `exit: too many arguments`, эмулятор не завершается.
+- `exit 1 2`: `exit: too many arguments`, эмулятор не завершается;
+- ошибки `vfs-save`: см. таблицу выше.
 
 `Ctrl-C` сбрасывает текущую строку, `Ctrl-D` завершает работу так же, как
 `exit`.
@@ -129,6 +172,7 @@ make clean        # удалить служебные файлы Python
 Запуск с параметрами:
 
 ```bash
+./run.sh --vfs tests/vfs/deep
 ./run.sh --script tests/startup/basic.emu
 ./run.sh --vfs ПУТЬ_К_VFS --script ПУТЬ_К_СКРИПТУ
 ```
@@ -136,23 +180,34 @@ make clean        # удалить служебные файлы Python
 Без `make` и `run.sh`:
 
 ```bash
-PYTHONPATH=src python3 -m shell_emulator --script tests/startup/basic.emu
+PYTHONPATH=src python3 -m shell_emulator --vfs tests/vfs/deep
 PYTHONPATH=src python3 -m unittest discover -s tests -v
-bash tests/scripts/stage2_script_errors.sh
+bash tests/scripts/stage3_all_commands.sh
 ```
 
-Bash-скрипты в `tests/scripts` запускают эмулятор с разными параметрами,
-показывают его диалог на экране и проверяют вывод и коды возврата. Каждый
-скрипт заканчивается строкой `PASS` или `FAILED`.
+Bash-скрипты в `tests/scripts` запускают эмулятор с разными параметрами и
+вариантами VFS, показывают его диалог на экране и проверяют вывод, коды
+возврата и содержимое сохранённых каталогов (`diff -r`). Каждый скрипт
+заканчивается строкой `PASS` или `FAILED`.
 
-| Скрипт                  | Что проверяет                                          |
-|-------------------------|--------------------------------------------------------|
-| `stage2_no_params.sh`   | запуск без параметров                                  |
-| `stage2_vfs_param.sh`   | параметр `--vfs` (две формы записи)                    |
-| `stage2_script_param.sh`| параметр `--script`, ввод и вывод скрипта на экране    |
-| `stage2_all_params.sh`  | оба параметра сразу, в любом порядке                   |
+| Скрипт                    | Что проверяет                                          |
+|---------------------------|--------------------------------------------------------|
+| `stage2_no_params.sh`     | запуск без параметров                                  |
+| `stage2_vfs_param.sh`     | параметр `--vfs` (две формы записи)                    |
+| `stage2_script_param.sh`  | параметр `--script`, ввод и вывод скрипта на экране    |
+| `stage2_all_params.sh`    | оба параметра сразу, в любом порядке                   |
 | `stage2_script_errors.sh` | пропуск ошибочных строк, нет файла, каталог вместо файла |
-| `stage2_cli_errors.sh`  | неизвестный параметр, параметр без значения, `--help`  |
+| `stage2_cli_errors.sh`    | неизвестный параметр, параметр без значения, `--help`  |
+| `stage3_vfs_minimal.sh`   | минимальная VFS: один файл и пустой каталог            |
+| `stage3_vfs_files.sh`     | VFS с несколькими файлами                              |
+| `stage3_vfs_deep.sh`      | VFS с вложенностью больше трёх уровней                 |
+| `stage3_vfs_default.sh`   | VFS по умолчанию (без `--vfs`)                         |
+| `stage3_vfs_errors.sh`    | нет каталога, файл вместо каталога, ссылка внутри VFS  |
+| `stage3_all_commands.sh`  | `tests/startup/all_commands.emu`: все команды, режимы и ошибки |
+
+Каталоги для проверки VFS лежат в `tests/vfs`: `minimal` (один файл),
+`several_files` (пять файлов), `deep` (5 каталогов, 6 файлов, до четырёх
+уровней вложенности). Стартовые скрипты эмулятора лежат в `tests/startup`.
 
 ## 4. Примеры использования
 
@@ -182,6 +237,7 @@ student@host:~$ exit 3
 [debug] startup parameters:
 [debug]   vfs    = <not set>
 [debug]   script = tests/startup/basic.emu
+[info] no VFS path given, default in-memory VFS created: 4 directories, 1 files
 student@host:~$ # Стартовый скрипт: основные возможности эмулятора
 student@host:~$ ls
 ls: args=[]
@@ -197,12 +253,13 @@ student@host:~$ exit
 ```
 
 Стартовый скрипт с ошибками
-(`./run.sh --vfs /home/student/vfs --script tests/startup/with_errors.emu`):
+(`./run.sh --vfs tests/vfs/deep --script tests/startup/with_errors.emu`):
 
 ```
 [debug] startup parameters:
-[debug]   vfs    = /home/student/vfs
+[debug]   vfs    = tests/vfs/deep
 [debug]   script = tests/startup/with_errors.emu
+[info] VFS loaded from tests/vfs/deep: 5 directories, 6 files
 student@host:~$ # Стартовый скрипт с ошибками: ошибочные строки пропускаются
 student@host:~$ ls first
 ls: args=['first']
@@ -222,6 +279,56 @@ student@host:~$ exit 7
 Эмулятор завершился с кодом 7. Строка `ls never-executed` после `exit 7`
 не выполняется.
 
+Загрузка VFS из каталога и её сохранение
+(`VFS_OUT=/home/student/vfs-out ./run.sh --vfs tests/vfs/deep --script tests/startup/save_vfs.emu`):
+
+```
+[debug] startup parameters:
+[debug]   vfs    = tests/vfs/deep
+[debug]   script = tests/startup/save_vfs.emu
+[info] VFS loaded from tests/vfs/deep: 5 directories, 6 files
+student@host:~$ # Сохранение загруженной VFS на диск.
+student@host:~$ # Каталог для сохранения задаётся переменной окружения VFS_OUT.
+student@host:~$ vfs-save $VFS_OUT
+VFS saved to /home/student/vfs-out
+student@host:~$ exit
+```
+
+Повторное сохранение в тот же каталог (он уже не пуст) даёт ошибку, работа
+продолжается:
+
+```
+student@host:~$ vfs-save $VFS_OUT
+tests/startup/save_vfs.emu: line 3: vfs-save: cannot save VFS: directory /home/student/vfs-out is not empty
+student@host:~$ exit
+```
+
+VFS по умолчанию (`./run.sh --script tests/startup/save_vfs.emu`):
+
+```
+[debug] startup parameters:
+[debug]   vfs    = <not set>
+[debug]   script = tests/startup/save_vfs.emu
+[info] no VFS path given, default in-memory VFS created: 4 directories, 1 files
+...
+```
+
+Ошибки загрузки VFS (код возврата 1):
+
+```
+$ ./run.sh --vfs no_such_dir
+[debug] startup parameters:
+[debug]   vfs    = no_such_dir
+[debug]   script = <not set>
+error: VFS not found: no_such_dir
+
+$ ./run.sh --vfs tests/vfs/minimal/hello.txt
+[debug] startup parameters:
+[debug]   vfs    = tests/vfs/minimal/hello.txt
+[debug]   script = <not set>
+error: invalid VFS format: not a directory: tests/vfs/minimal/hello.txt
+```
+
 Скрипт не найден (`./run.sh --script nope.emu`, код возврата 1):
 
 ```
@@ -231,14 +338,18 @@ student@host:~$ exit 7
 error: cannot read startup script nope.emu: No such file or directory
 ```
 
-Запуск bash-скрипта из реальной ОС (`bash tests/scripts/stage2_cli_errors.sh`):
+Все команды, режимы и ошибки одним скриптом
+(`bash tests/scripts/stage3_all_commands.sh`, фрагмент вывода):
 
 ```
-=== неизвестный параметр: сообщение об ошибке, код 2 ===
-$ python3 -m shell_emulator --bogus
-    usage: shell_emulator [-h] [--vfs PATH] [--script PATH]
-    shell_emulator: error: unrecognized arguments: --bogus
-    [exit code: 2]
+student@host:~$ vfs-save $VFS_OUT
+VFS saved to /tmp/tmp.XXXXXX/saved
+student@host:~$ vfs-save
+tests/startup/all_commands.emu: line 31: vfs-save: missing path operand
+student@host:~$ vfs-save one two
+tests/startup/all_commands.emu: line 32: vfs-save: too many arguments
+student@host:~$ vfs-save $VFS_SRC
+tests/startup/all_commands.emu: line 35: vfs-save: cannot save VFS: tests/vfs/deep is the source directory or inside it
 ...
-PASS: stage2_cli_errors.sh
+PASS: stage3_all_commands.sh
 ```

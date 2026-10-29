@@ -7,3 +7,7 @@ class ShellError(Exception):
 
 class ParseError(ShellError):
     """Ошибка разбора введённой строки (например, не закрыта кавычка)."""
+
+
+class VfsError(ShellError):
+    """Ошибка загрузки или сохранения виртуальной файловой системы."""

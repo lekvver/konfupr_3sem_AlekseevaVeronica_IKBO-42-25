@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Callable
 
-from .errors import ShellError
+from .errors import ShellError, VfsError
 
 if TYPE_CHECKING:
     from .shell import Shell
@@ -13,6 +13,7 @@ EXIT_OK = 0
 EXIT_MISUSE = 2
 EXIT_MASK = 0xFF
 EXIT_MAX_ARGS = 1
+VFS_SAVE_ARGS = 1
 
 Handler = Callable[["Shell", "list[str]"], None]
 
@@ -50,8 +51,22 @@ def cmd_exit(shell: Shell, args: list[str]) -> None:
     shell.exit_code = exit_status(shell, args)
 
 
+def cmd_vfs_save(shell: Shell, args: list[str]) -> None:
+    """vfs-save ПУТЬ: сохраняет состояние VFS на диск в исходном формате."""
+    if not args:
+        raise ShellError("vfs-save: missing path operand")
+    if len(args) > VFS_SAVE_ARGS:
+        raise ShellError("vfs-save: too many arguments")
+    try:
+        shell.vfs.save(args[0])
+    except VfsError as exc:
+        raise ShellError(f"vfs-save: {exc}") from exc
+    shell.write(f"VFS saved to {args[0]}")
+
+
 COMMANDS: dict[str, Handler] = {
     "ls": cmd_ls,
     "cd": cmd_cd,
     "exit": cmd_exit,
+    "vfs-save": cmd_vfs_save,
 }
