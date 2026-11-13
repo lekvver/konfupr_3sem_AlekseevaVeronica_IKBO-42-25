@@ -1,11 +1,13 @@
 """Тесты точки входа: вывод параметров и коды возврата."""
 
+import os
 import unittest
 
 from depgraph.cli import EXIT_FAILURE, EXIT_OK, EXIT_USAGE
-from helpers import INDEX_URL, run_main
+from helpers import DATA_DIR, INDEX_URL, run_main, temp_file
 
 URL = INDEX_URL
+REPOS_DIR = os.path.join(os.path.dirname(DATA_DIR), "repos")
 
 
 class MainTest(unittest.TestCase):
@@ -41,7 +43,7 @@ class DirectDependenciesTest(unittest.TestCase):
 
     def test_prints_direct_dependencies(self):
         """Выводятся прямые зависимости с пометками."""
-        code, out, _ = run_main(["-p", "app", "-r", self.index_url])
+        code, out, _ = run_main(["-p", "app", "-r", self.index_url, "--direct"])
         self.assertEqual(code, EXIT_OK)
         self.assertIn("Direct dependencies of app 1.0-1 (5):", out)
         self.assertIn("  base\n", out)
@@ -51,24 +53,81 @@ class DirectDependenciesTest(unittest.TestCase):
 
     def test_package_without_dependencies(self):
         """Пакет без зависимостей: (none)."""
-        _, out, _ = run_main(["-p", "base", "-r", self.index_url])
+        _, out, _ = run_main(["-p", "base", "-r", self.index_url, "--direct"])
         self.assertIn("(0):", out)
         self.assertIn("(none)", out)
 
     def test_unknown_package(self):
         """Неизвестный пакет: ошибка и код 1."""
-        code, _, err = run_main(["-p", "zzz", "-r", self.index_url])
+        code, _, err = run_main(["-p", "zzz", "-r", self.index_url, "--direct"])
         self.assertEqual(code, EXIT_FAILURE)
         self.assertIn("package 'zzz' not found", err)
 
     def test_print_params_option(self):
         """--print-params выводит параметры перед результатом."""
         _, out, _ = run_main(
-            ["-p", "base", "-r", self.index_url, "--print-params"])
+            ["-p", "base", "-r", self.index_url, "--direct", "--print-params"])
         self.assertTrue(out.startswith("package   = base"))
 
     def test_bad_repository(self):
         """Репозиторий без индекса: ошибка и код 1."""
-        code, _, err = run_main(["-p", "base", "-r", "file:///no/such/dir"])
+        code, _, err = run_main(
+            ["-p", "base", "-r", "file:///no/such/dir", "--direct"])
         self.assertEqual(code, EXIT_FAILURE)
         self.assertIn("package index not found", err)
+
+
+class GraphModeTest(unittest.TestCase):
+    """Построение графа и тестовый режим (этап 3)."""
+
+    def repo(self, name):
+        """Путь к файлу из tests/repos."""
+        return os.path.join(REPOS_DIR, name)
+
+    def test_acyclic_graph(self):
+        """Граф без циклов: список смежности и сообщение об отсутствии."""
+        code, out, _ = run_main(
+            ["-p", "A", "-r", self.repo("diamond.txt"), "-t"])
+        self.assertEqual(code, EXIT_OK)
+        self.assertIn("Dependency graph of A: 4 packages, 4 edges", out)
+        self.assertIn("  A: B, C\n  B: D\n  C: D\n  D: (none)\n", out)
+        self.assertIn("No cyclic dependencies found", out)
+
+    def test_cycle_is_reported(self):
+        """Цикл выводится путём."""
+        _, out, _ = run_main(["-p", "A", "-r", self.repo("cycle.txt"), "-t"])
+        self.assertIn("Cyclic dependencies found (1):", out)
+        self.assertIn("  A -> B -> C -> A", out)
+
+    def test_other_root(self):
+        """Анализ другого пакета того же файла."""
+        _, out, _ = run_main(
+            ["-p", "X", "-r", self.repo("complex.txt"), "-t"])
+        self.assertIn("Dependency graph of X: 2 packages, 1 edges", out)
+
+    def test_package_not_in_test_repo(self):
+        """Пакета нет в тестовом репозитории."""
+        code, _, err = run_main(
+            ["-p", "Q", "-r", self.repo("linear.txt"), "-t"])
+        self.assertEqual(code, EXIT_FAILURE)
+        self.assertIn("package 'Q' not found", err)
+
+    def test_broken_test_repo(self):
+        """Ошибка в файле: сообщение с номером строки, код 1."""
+        with temp_file("A: B\nbroken\n") as path:
+            code, _, err = run_main(["-p", "A", "-r", path, "-t"])
+        self.assertEqual(code, EXIT_FAILURE)
+        self.assertIn("line 2", err)
+
+    def test_direct_option(self):
+        """--direct выводит только прямые зависимости."""
+        _, out, _ = run_main(
+            ["-p", "A", "-r", self.repo("tree.txt"), "-t", "--direct"])
+        self.assertEqual(
+            out, "Direct dependencies of A (2):\n  B\n  C\n")
+
+    def test_real_mode_graph(self):
+        """Граф по индексу apt: виртуальные пакеты и цикл libc6."""
+        _, out, _ = run_main(["-p", "libc6", "-r", INDEX_URL])
+        self.assertIn("Dependency graph of libc6: 2 packages, 2 edges", out)
+        self.assertIn("libc6 -> libgcc-s1 -> libc6", out)

@@ -15,3 +15,7 @@ class RepositoryError(DepGraphError):
 
 class PackageNotFoundError(RepositoryError):
     """Запрошенного пакета нет в репозитории."""
+
+
+class GraphError(DepGraphError):
+    """Ошибка построения или обработки графа зависимостей."""

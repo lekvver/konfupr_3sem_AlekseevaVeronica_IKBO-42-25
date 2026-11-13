@@ -1,0 +1,5 @@
+# Два цикла: A-B-A и B-D-B
+A: B C
+B: A D
+C: D
+D: B

@@ -17,6 +17,7 @@
 |------|-------------------------------------------------|
 | 1    | Минимальный прототип: параметры и их проверка   |
 | 2    | Сбор данных: прямые зависимости из индекса apt  |
+| 3    | Граф зависимостей (BFS с рекурсией), циклы, тестовый режим |
 
 Структура проекта:
 
@@ -37,6 +38,7 @@ Makefile, run.sh   запуск и тесты
 | `-r`, `--repo`        | URL репозитория или путь к файлу тестового репозитория | обязателен |
 | `-t`, `--test-mode`   | Режим тестового репозитория: `--repo` — путь к файлу | выключен |
 | `-o`, `--output`      | Имя файла с изображением графа (`.svg`)          | `graph.svg`  |
+| `--direct`            | Вывести только прямые зависимости (этап 2)       | выключен     |
 | `--print-params`      | Вывести все параметры в формате «ключ = значение» | выключен    |
 | `-h`, `--help`        | Справка                                          |              |
 
@@ -89,6 +91,53 @@ output    = graph.svg
 Ошибки (`error: ...`, код 1): нет сети или хоста, индекс не найден,
 повреждённый архив, пустой индекс, пакета нет в репозитории.
 
+### Граф зависимостей (этап 3)
+
+По умолчанию строится граф всех транзитивных зависимостей пакета и
+выводится списком смежности (пакеты — в порядке обхода в ширину), затем
+сообщаются найденные циклы:
+
+```
+Dependency graph of A: 6 packages, 8 edges
+  A: B, C
+  B: D
+  ...
+Cyclic dependencies found (1):
+  B -> D -> F -> B
+```
+
+Алгоритм (`src/depgraph/graph.py`): обход в ширину, записанный через
+рекурсию по уровням. Функция `_bfs_level` получает список пакетов
+текущего уровня, записывает их зависимости в граф и вызывает сама себя
+для следующего уровня. В следующий уровень попадают только пакеты,
+которых ещё нет в графе, поэтому каждый пакет обрабатывается один раз,
+а циклические зависимости не зацикливают обход. Слишком глубокая цепочка
+(переполнение рекурсии) даёт понятную ошибку, а не трассировку.
+
+Циклы ищет отдельная функция `find_cycles` (обход в глубину без
+рекурсии): каждое ребро на пакет, лежащий на текущем пути, выводится
+как цикл `A -> B -> C -> A`. Циклы в реальных данных встречаются:
+например, `libc6 -> libgcc-s1 -> libc6`.
+
+### Тестовый режим (этап 3)
+
+С `--test-mode` параметр `--repo` — путь к файлу с описанием графа.
+Пакеты называются заглавными латинскими буквами:
+
+```
+# комментарий
+A: B C        # A зависит от B и C
+B: C
+C:            # у C зависимостей нет
+```
+
+Правила: одна строка на пакет; зависимости через пробел или запятую;
+повторы убираются; пакет, упомянутый только как зависимость, считается
+пакетом без зависимостей; недостижимые от анализируемого пакета вершины в
+граф не входят. Ошибки файла (нет двоеточия, недопустимое имя, пакет
+описан дважды, пустой файл) выводятся с номером строки, код возврата 1.
+Готовые примеры лежат в `tests/repos/`.
+
 ## 3. Сборка и запуск тестов
 
 Сборка не нужна. Требуется только Python 3.9+.
@@ -100,24 +149,36 @@ make test-unit     # только модульные тесты
 make lint          # flake8 (нужен pip install flake8)
 ```
 
-Тесты не требуют сети. Сценарий `tests/scripts/stage2_direct.sh` дополнительно
-обращается к archive.ubuntu.com, если он доступен.
+Модульные тесты не требуют сети. Сценарии `tests/scripts/stage*.sh`
+дополнительно обращаются к archive.ubuntu.com, если он доступен.
 
 ## 4. Примеры использования
 
 ```
-$ ./run.sh -p bash -r http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/
+$ ./run.sh -p bash -r http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/ --direct
 Direct dependencies of bash 5.2.21-2ubuntu4 (4):
   libc6
   libtinfo6
   base-files
   debianutils
 
-$ ./run.sh -p curl -r http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/
-Direct dependencies of curl 8.5.0-2ubuntu10 (3):
-  libc6
-  libcurl4t64
-  zlib1g
+$ ./run.sh -p A -r tests/repos/two_cycles.txt --test-mode
+Dependency graph of A: 4 packages, 6 edges
+  A: B, C
+  B: A, D
+  C: D
+  D: B
+Cyclic dependencies found (2):
+  A -> B -> A
+  B -> D -> B
+
+$ ./run.sh -p libc6 -r http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/
+Dependency graph of libc6: 3 packages, 3 edges
+  libc6: libgcc-s1
+  libgcc-s1: gcc-14-base, libc6
+  gcc-14-base: (none)
+Cyclic dependencies found (1):
+  libc6 -> libgcc-s1 -> libc6
 
 $ ./run.sh -p bash -r http://archive.ubuntu.com/ubuntu/ -o graph.png
 error: output file must have .svg extension: graph.png
@@ -125,4 +186,5 @@ try: depgraph --help
 ```
 
 Примеры ошибок параметров: `bash tests/scripts/stage1_params.sh`;
-этап 2: `bash tests/scripts/stage2_direct.sh`.
+этап 2: `bash tests/scripts/stage2_direct.sh`;
+этап 3: `bash tests/scripts/stage3_graph.sh`.

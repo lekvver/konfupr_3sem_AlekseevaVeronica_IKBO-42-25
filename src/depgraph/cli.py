@@ -3,14 +3,12 @@
 import sys
 from typing import List, Optional, Sequence
 
-from depgraph.apt import AptRepository, load_repository
+from depgraph.apt import load_repository
 from depgraph.config import Config, parse_config
-from depgraph.errors import (
-    ConfigError,
-    DepGraphError,
-    PackageNotFoundError,
-    RepositoryError,
-)
+from depgraph.errors import ConfigError, DepGraphError, PackageNotFoundError
+from depgraph.graph import Graph, build_graph, count_edges, find_cycles
+from depgraph.repository import Repository
+from depgraph.testrepo import load_test_repo
 
 EXIT_OK = 0
 EXIT_FAILURE = 1
@@ -26,7 +24,7 @@ def format_params(config: Config) -> List[str]:
 
 
 def describe_dependency(
-    repo: AptRepository, chosen: str, group: Sequence[str]
+    repo: Repository, chosen: str, group: Sequence[str]
 ) -> str:
     """Строка о прямой зависимости: выбранный пакет и пометки."""
     notes = []
@@ -38,22 +36,40 @@ def describe_dependency(
     return f"  {chosen}{suffix}"
 
 
-def direct_dependencies_report(repo: AptRepository, name: str) -> List[str]:
+def direct_dependencies_report(repo: Repository, name: str) -> List[str]:
     """Строки отчёта о прямых зависимостях пакета."""
     pairs = repo.dependency_groups(name)
-    head = f"Direct dependencies of {name} {repo.version(name)} ({len(pairs)}):"
-    lines = [head]
+    title = " ".join(filter(None, [name, repo.version(name)]))
+    lines = [f"Direct dependencies of {title} ({len(pairs)}):"]
     lines.extend(describe_dependency(repo, ch, grp) for ch, grp in pairs)
     if not pairs:
         lines.append("  (none)")
     return lines
 
 
-def load_repo(config: Config) -> AptRepository:
+def graph_report(graph: Graph, root: str) -> List[str]:
+    """Строки отчёта о графе зависимостей и найденных циклах."""
+    lines = [
+        f"Dependency graph of {root}: {len(graph)} packages, "
+        f"{count_edges(graph)} edges"
+    ]
+    for name, deps in graph.items():
+        lines.append(f"  {name}: {', '.join(deps) if deps else '(none)'}")
+    cycles = find_cycles(graph, root)
+    if not cycles:
+        lines.append("No cyclic dependencies found")
+        return lines
+    lines.append(f"Cyclic dependencies found ({len(cycles)}):")
+    lines.extend("  " + " -> ".join(cycle) for cycle in cycles)
+    return lines
+
+
+def load_repo(config: Config) -> Repository:
     """Загружает репозиторий и проверяет, что в нём есть пакет."""
     if config.test_mode:
-        raise RepositoryError("test mode is not supported yet")
-    repo = load_repository(config.repo)
+        repo: Repository = load_test_repo(config.repo)
+    else:
+        repo = load_repository(config.repo)
     if not repo.has_package(config.package):
         raise PackageNotFoundError(
             f"package {config.package!r} not found in repository"
@@ -67,7 +83,12 @@ def run(argv: Optional[Sequence[str]]) -> int:
     if config.print_params:
         print("\n".join(format_params(config)))
     repo = load_repo(config)
-    print("\n".join(direct_dependencies_report(repo, config.package)))
+    if config.direct:
+        lines = direct_dependencies_report(repo, config.package)
+    else:
+        graph = build_graph(config.package, repo)
+        lines = graph_report(graph, config.package)
+    print("\n".join(lines))
     return EXIT_OK
 
 

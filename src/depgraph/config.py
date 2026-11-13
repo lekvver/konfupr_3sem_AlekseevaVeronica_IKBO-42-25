@@ -25,6 +25,7 @@ class Config:
     test_mode: bool
     output: str
     print_params: bool = False
+    direct: bool = False
 
     def as_pairs(self) -> List[Tuple[str, str]]:
         """Возвращает параметры как пары (ключ, значение) для вывода."""
@@ -70,6 +71,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--print-params", action="store_true",
         help="вывести все параметры в формате ключ = значение",
+    )
+    parser.add_argument(
+        "--direct", action="store_true",
+        help="вывести только прямые зависимости пакета (этап 2)",
     )
     return parser
 
@@ -152,6 +157,7 @@ def parse_config(argv: Optional[Sequence[str]] = None) -> Config:
         test_mode=args.test_mode,
         output=args.output,
         print_params=args.print_params,
+        direct=args.direct,
     )
     validate(config)
     return config
