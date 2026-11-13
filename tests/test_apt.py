@@ -63,7 +63,7 @@ class ParsePackagesTest(unittest.TestCase):
 
     def test_all_packages_found(self):
         """Повтор имени не создаёт второй записи."""
-        self.assertEqual(len(self.packages), 9)
+        self.assertEqual(len(self.packages), 11)
 
     def test_first_duplicate_wins(self):
         """При повторе имени остаётся первая запись."""
@@ -107,6 +107,10 @@ class AptRepositoryTest(unittest.TestCase):
     def test_virtual_package_uses_first_provider(self):
         """Виртуальный пакет заменяется первым поставщиком."""
         self.assertEqual(self.repo.choose(("mail-agent",)), "mta-one")
+
+    def test_provider_with_higher_priority_wins(self):
+        """Из поставщиков выбирается пакет с более высоким приоритетом."""
+        self.assertEqual(self.repo.choose(("awk",)), "awk-mawk")
 
     def test_real_alternative_preferred(self):
         """Настоящий пакет предпочтительнее виртуального."""

@@ -32,6 +32,16 @@ Package: libgcc-s1
 Version: 14
 Depends: libc6 (>= 2.35)
 
+Package: awk-gawk
+Version: 5.2
+Priority: optional
+Provides: awk
+
+Package: awk-mawk
+Version: 1.3
+Priority: required
+Provides: awk
+
 Package: dup
 Version: first
 

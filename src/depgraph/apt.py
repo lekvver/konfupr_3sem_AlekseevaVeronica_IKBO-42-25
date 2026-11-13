@@ -18,7 +18,10 @@ from depgraph.errors import RepositoryError
 TIMEOUT_SECONDS = 60
 HTTP_NOT_FOUND = 404
 INDEX_NAMES = ("Packages.gz", "Packages.xz", "Packages")
-KEPT_FIELDS = ("Package", "Version", "Pre-Depends", "Depends", "Provides")
+KEPT_FIELDS = (
+    "Package", "Version", "Priority", "Pre-Depends", "Depends", "Provides",
+)
+PRIORITIES = ("required", "important", "standard", "optional", "extra")
 DEPENDENCY_FIELDS = ("Pre-Depends", "Depends")
 RELATION_NAME = re.compile(r"\s*([A-Za-z0-9][A-Za-z0-9+.\-]*)")
 
@@ -36,6 +39,7 @@ class Package:
     version: str
     groups: Tuple[Group, ...]
     provides: Tuple[str, ...]
+    priority: str = ""
 
 
 class IndexNotFoundError(RepositoryError):
@@ -82,6 +86,13 @@ def _paragraphs(text: str) -> Iterator[Dict[str, str]]:
         yield fields
 
 
+def priority_rank(package: Package) -> int:
+    """Чем меньше число, тем важнее пакет (required — самый важный)."""
+    if package.priority in PRIORITIES:
+        return PRIORITIES.index(package.priority)
+    return len(PRIORITIES)
+
+
 def _make_package(name: str, fields: Dict[str, str]) -> Package:
     """Собирает Package из полей абзаца."""
     groups: List[Group] = []
@@ -90,7 +101,13 @@ def _make_package(name: str, fields: Dict[str, str]) -> Package:
     provides = tuple(
         group[0] for group in parse_relations(fields.get("Provides", ""))
     )
-    return Package(name, fields.get("Version", ""), tuple(groups), provides)
+    return Package(
+        name,
+        fields.get("Version", ""),
+        tuple(groups),
+        provides,
+        fields.get("Priority", ""),
+    )
 
 
 def parse_packages(text: str) -> Dict[str, Package]:
@@ -107,12 +124,18 @@ class AptRepository:
     """Индекс пакетов с выбором альтернатив и виртуальных пакетов."""
 
     def __init__(self, packages: Dict[str, Package]) -> None:
-        """Запоминает пакеты и строит таблицу «виртуальный -> поставщики»."""
+        """Запоминает пакеты и строит таблицу «виртуальный -> поставщики».
+
+        Поставщики упорядочены по приоритету пакета (required, important,
+        standard, optional, extra), при равенстве — по порядку в индексе.
+        """
         self.packages = packages
         self.providers: Dict[str, List[str]] = {}
         for package in packages.values():
             for virtual in package.provides:
                 self.providers.setdefault(virtual, []).append(package.name)
+        for names in self.providers.values():
+            names.sort(key=lambda name: priority_rank(packages[name]))
 
     def has_package(self, name: str) -> bool:
         """Есть ли в индексе настоящий пакет с таким именем."""
@@ -131,7 +154,7 @@ class AptRepository:
         """Выбирает пакет из группы альтернатив.
 
         Берётся первая альтернатива, которая есть в индексе; затем первая
-        виртуальная (её заменяет первый поставщик). Если подходящих нет,
+        виртуальная (её заменяет самый приоритетный поставщик). Если нет,
         возвращается первая альтернатива как есть.
         """
         for name in group:
