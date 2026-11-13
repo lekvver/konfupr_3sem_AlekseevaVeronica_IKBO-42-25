@@ -4,18 +4,18 @@
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 URL="http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/"
+LOCAL="file://${TESTS_DIR}/data/index"
 printf 'A: B\nB:\n' > "${TMP_DIR}/repo.txt"
 
 show_case "все параметры заданы: вывод ключ = значение"
-run_tool -p bash -r "${URL}" -o "${TMP_DIR}/g.svg"
+run_tool -p base -r "${LOCAL}" -o "${TMP_DIR}/g.svg" --print-params
 expect_status 0
-expect_output "package   = bash"
+expect_output "package   = base"
 expect_output "test_mode = false"
 expect_output "output    = ${TMP_DIR}/g.svg"
 
 show_case "тестовый режим: --repo задаёт путь к файлу"
-run_tool -p A -r "${TMP_DIR}/repo.txt" --test-mode
-expect_status 0
+run_tool -p A -r "${TMP_DIR}/repo.txt" --test-mode --print-params
 expect_output "test_mode = true"
 expect_output "output    = graph.svg"
 

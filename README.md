@@ -16,6 +16,7 @@
 | Этап | Содержание                                      |
 |------|-------------------------------------------------|
 | 1    | Минимальный прототип: параметры и их проверка   |
+| 2    | Сбор данных: прямые зависимости из индекса apt  |
 
 Структура проекта:
 
@@ -23,6 +24,7 @@
 src/depgraph/   исходный код
 tests/          модульные тесты (test_*.py)
 tests/scripts/  bash-сценарии, которые запускают инструмент из ОС
+tests/data/     локальный индекс Packages для тестов без сети
 tests/repos/    тестовые репозитории (файлы с графами)
 Makefile, run.sh   запуск и тесты
 ```
@@ -35,9 +37,18 @@ Makefile, run.sh   запуск и тесты
 | `-r`, `--repo`        | URL репозитория или путь к файлу тестового репозитория | обязателен |
 | `-t`, `--test-mode`   | Режим тестового репозитория: `--repo` — путь к файлу | выключен |
 | `-o`, `--output`      | Имя файла с изображением графа (`.svg`)          | `graph.svg`  |
+| `--print-params`      | Вывести все параметры в формате «ключ = значение» | выключен    |
 | `-h`, `--help`        | Справка                                          |              |
 
-На этапе 1 при запуске выводятся все параметры в формате «ключ = значение».
+Параметр `--print-params` — наследие этапа 1 (там параметры выводились
+всегда). Пример вывода:
+
+```
+package   = bash
+repo      = http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/
+test_mode = false
+output    = graph.svg
+```
 
 Проверки параметров (при ошибке: `error: ...` в stderr, код возврата 2):
 
@@ -50,6 +61,34 @@ Makefile, run.sh   запуск и тесты
   существует и доступен для записи;
 - неизвестные параметры и параметры без значения.
 
+### Репозиторий Ubuntu (этап 2)
+
+В реальном режиме `--repo` — адрес каталога с индексом пакетов, например
+`http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/`. Можно
+указать и прямую ссылку на `Packages.gz`, `Packages.xz` или `Packages`;
+для каталога пробуются именно в этом порядке. Допустимы схемы `http`,
+`https` и `file` (последняя нужна для проверок без сети). Файл
+скачивается стандартным `urllib`, распаковывается `gzip`/`lzma` и
+разбирается собственным кодом (`src/depgraph/apt.py`).
+
+Что считается прямой зависимостью:
+
+- поля `Pre-Depends` и затем `Depends`; `Recommends`, `Suggests`,
+  `Conflicts` и другие поля не учитываются;
+- версии (`>= 1.2`), архитектуры (`:any`, `[amd64]`) отбрасываются;
+- группа альтернатив `a | b`: выбирается первая альтернатива, которая
+  есть в индексе; иначе первая виртуальная (её заменяет первый пакет из
+  `Provides`); иначе первая как есть (пакета нет в этом индексе, в
+  отчёте стоит пометка `not in this index`);
+- повторные зависимости на один и тот же пакет объединяются;
+- если в индексе несколько записей с одним именем, берётся первая.
+
+Индекс одного компонента (`main`) не содержит пакетов из `universe`:
+такие зависимости помечаются как отсутствующие в индексе.
+
+Ошибки (`error: ...`, код 1): нет сети или хоста, индекс не найден,
+повреждённый архив, пустой индекс, пакета нет в репозитории.
+
 ## 3. Сборка и запуск тестов
 
 Сборка не нужна. Требуется только Python 3.9+.
@@ -61,18 +100,29 @@ make test-unit     # только модульные тесты
 make lint          # flake8 (нужен pip install flake8)
 ```
 
+Тесты не требуют сети. Сценарий `tests/scripts/stage2_direct.sh` дополнительно
+обращается к archive.ubuntu.com, если он доступен.
+
 ## 4. Примеры использования
 
 ```
 $ ./run.sh -p bash -r http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/
-package   = bash
-repo      = http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/
-test_mode = false
-output    = graph.svg
+Direct dependencies of bash 5.2.21-2ubuntu4 (4):
+  libc6
+  libtinfo6
+  base-files
+  debianutils
+
+$ ./run.sh -p curl -r http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/
+Direct dependencies of curl 8.5.0-2ubuntu10 (3):
+  libc6
+  libcurl4t64
+  zlib1g
 
 $ ./run.sh -p bash -r http://archive.ubuntu.com/ubuntu/ -o graph.png
 error: output file must have .svg extension: graph.png
 try: depgraph --help
 ```
 
-Больше примеров ошибок: `bash tests/scripts/stage1_params.sh`.
+Примеры ошибок параметров: `bash tests/scripts/stage1_params.sh`;
+этап 2: `bash tests/scripts/stage2_direct.sh`.

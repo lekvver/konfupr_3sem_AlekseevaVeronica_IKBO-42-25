@@ -7,3 +7,11 @@ class DepGraphError(Exception):
 
 class ConfigError(DepGraphError):
     """Неверные параметры командной строки."""
+
+
+class RepositoryError(DepGraphError):
+    """Ошибка загрузки или разбора репозитория."""
+
+
+class PackageNotFoundError(RepositoryError):
+    """Запрошенного пакета нет в репозитории."""

@@ -8,6 +8,9 @@ from typing import Iterator, List, Tuple
 
 from depgraph.cli import main
 
+DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+INDEX_URL = "file://" + os.path.join(DATA_DIR, "index")
+
 
 def run_main(argv: List[str]) -> Tuple[int, str, str]:
     """Вызывает main с перехватом вывода: код, stdout, stderr."""

@@ -1,0 +1,39 @@
+Package: app
+Version: 1.0-1
+Pre-Depends: base (>= 1)
+Depends: libfoo (>= 1.2), libbar | libbaz,
+ mail-agent, missing-pkg, libfoo
+Recommends: ignored-recommend
+
+Package: base
+Version: 2.0
+
+Package: libfoo
+Version: 1.5
+Depends: libc6:any (>= 2.34), libbar [amd64]
+
+Package: libbaz
+Version: 3.1
+Provides: libbar-compat (= 1.0)
+
+Package: mta-one
+Version: 1.0
+Provides: mail-agent, mta-extra
+
+Package: mta-two
+Version: 2.0
+Provides: mail-agent
+
+Package: libc6
+Version: 2.39
+Depends: libgcc-s1
+
+Package: libgcc-s1
+Version: 14
+Depends: libc6 (>= 2.35)
+
+Package: dup
+Version: first
+
+Package: dup
+Version: second
