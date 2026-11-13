@@ -26,6 +26,7 @@ class Config:
     output: str
     print_params: bool = False
     direct: bool = False
+    load_order: bool = False
 
     def as_pairs(self) -> List[Tuple[str, str]]:
         """Возвращает параметры как пары (ключ, значение) для вывода."""
@@ -75,6 +76,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--direct", action="store_true",
         help="вывести только прямые зависимости пакета (этап 2)",
+    )
+    parser.add_argument(
+        "--load-order", action="store_true",
+        help="вывести порядок загрузки зависимостей пакета (этап 4)",
     )
     return parser
 
@@ -141,8 +146,15 @@ def check_output(path: str) -> None:
         raise ConfigError(f"output directory is not writable: {folder}")
 
 
+def check_actions(config: Config) -> None:
+    """Режимы --direct и --load-order нельзя включить одновременно."""
+    if config.direct and config.load_order:
+        raise ConfigError("--direct and --load-order are mutually exclusive")
+
+
 def validate(config: Config) -> None:
     """Проверяет все параметры; при ошибке возбуждает ConfigError."""
+    check_actions(config)
     check_package(config.package, config.test_mode)
     check_repo(config.repo, config.test_mode)
     check_output(config.output)
@@ -158,6 +170,7 @@ def parse_config(argv: Optional[Sequence[str]] = None) -> Config:
         output=args.output,
         print_params=args.print_params,
         direct=args.direct,
+        load_order=args.load_order,
     )
     validate(config)
     return config

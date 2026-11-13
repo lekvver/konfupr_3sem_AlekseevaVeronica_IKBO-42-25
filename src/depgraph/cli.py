@@ -7,6 +7,7 @@ from depgraph.apt import load_repository
 from depgraph.config import Config, parse_config
 from depgraph.errors import ConfigError, DepGraphError, PackageNotFoundError
 from depgraph.graph import Graph, build_graph, count_edges, find_cycles
+from depgraph.order import load_order
 from depgraph.repository import Repository
 from depgraph.testrepo import load_test_repo
 
@@ -64,6 +65,21 @@ def graph_report(graph: Graph, root: str) -> List[str]:
     return lines
 
 
+def load_order_report(graph: Graph, root: str) -> List[str]:
+    """Строки отчёта о порядке загрузки пакетов (зависимости первыми)."""
+    order = load_order(graph, root)
+    lines = [
+        f"Load order for {root}: {len(order)} packages, "
+        "dependencies first"
+    ]
+    lines.extend(f"  {number}. {name}" for number, name in enumerate(order, 1))
+    cycles = find_cycles(graph, root)
+    if cycles:
+        lines.append(f"Order inside cycles is arbitrary ({len(cycles)} found):")
+        lines.extend("  " + " -> ".join(cycle) for cycle in cycles)
+    return lines
+
+
 def load_repo(config: Config) -> Repository:
     """Загружает репозиторий и проверяет, что в нём есть пакет."""
     if config.test_mode:
@@ -87,7 +103,10 @@ def run(argv: Optional[Sequence[str]]) -> int:
         lines = direct_dependencies_report(repo, config.package)
     else:
         graph = build_graph(config.package, repo)
-        lines = graph_report(graph, config.package)
+        if config.load_order:
+            lines = load_order_report(graph, config.package)
+        else:
+            lines = graph_report(graph, config.package)
     print("\n".join(lines))
     return EXIT_OK
 

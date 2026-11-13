@@ -131,3 +131,39 @@ class GraphModeTest(unittest.TestCase):
         _, out, _ = run_main(["-p", "libc6", "-r", INDEX_URL])
         self.assertIn("Dependency graph of libc6: 2 packages, 2 edges", out)
         self.assertIn("libc6 -> libgcc-s1 -> libc6", out)
+
+
+class LoadOrderModeTest(unittest.TestCase):
+    """Режим --load-order (этап 4)."""
+
+    def test_order_output(self):
+        """Выводится нумерованный список, зависимости первыми."""
+        path = os.path.join(REPOS_DIR, "diamond.txt")
+        code, out, _ = run_main(["-p", "A", "-r", path, "-t", "--load-order"])
+        self.assertEqual(code, EXIT_OK)
+        self.assertEqual(
+            out,
+            "Load order for A: 4 packages, dependencies first\n"
+            "  1. D\n  2. B\n  3. C\n  4. A\n",
+        )
+
+    def test_cycles_are_mentioned(self):
+        """Если есть циклы, они перечисляются."""
+        path = os.path.join(REPOS_DIR, "cycle.txt")
+        _, out, _ = run_main(["-p", "A", "-r", path, "-t", "--load-order"])
+        self.assertIn("  1. C\n  2. B\n  3. A\n", out)
+        self.assertIn("Order inside cycles is arbitrary (1 found):", out)
+        self.assertIn("  A -> B -> C -> A", out)
+
+    def test_real_mode_order(self):
+        """Порядок по индексу apt: libc6 и libgcc-s1 образуют цикл."""
+        _, out, _ = run_main(
+            ["-p", "libc6", "-r", INDEX_URL, "--load-order"])
+        self.assertIn("  1. libgcc-s1\n  2. libc6\n", out)
+
+    def test_exclusive_with_direct(self):
+        """--direct и --load-order вместе не допускаются."""
+        code, _, err = run_main(
+            ["-p", "base", "-r", INDEX_URL, "--direct", "--load-order"])
+        self.assertEqual(code, EXIT_USAGE)
+        self.assertIn("mutually exclusive", err)
