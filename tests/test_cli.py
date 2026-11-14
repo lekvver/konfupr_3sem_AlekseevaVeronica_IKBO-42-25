@@ -16,7 +16,8 @@ class MainTest(unittest.TestCase):
     def test_prints_all_params(self):
         """--print-params выводит параметры в формате ключ = значение."""
         _, out, _ = run_main(
-            ["-p", "base", "-r", URL, "-o", "g.svg", "--print-params"])
+            ["-p", "base", "-r", URL, "-o", "g.svg", "--print-params",
+             "--direct"])
         self.assertIn("package   = base", out)
         self.assertIn(f"repo      = {URL}", out)
         self.assertIn("test_mode = false", out)
@@ -87,7 +88,8 @@ class GraphModeTest(unittest.TestCase):
     def test_acyclic_graph(self):
         """Граф без циклов: список смежности и сообщение об отсутствии."""
         code, out, _ = run_main(
-            ["-p", "A", "-r", self.repo("diamond.txt"), "-t"])
+            ["-p", "A", "-r", self.repo("diamond.txt"), "-t",
+             "--print-graph"])
         self.assertEqual(code, EXIT_OK)
         self.assertIn("Dependency graph of A: 4 packages, 4 edges", out)
         self.assertIn("  A: B, C\n  B: D\n  C: D\n  D: (none)\n", out)
@@ -95,14 +97,16 @@ class GraphModeTest(unittest.TestCase):
 
     def test_cycle_is_reported(self):
         """Цикл выводится путём."""
-        _, out, _ = run_main(["-p", "A", "-r", self.repo("cycle.txt"), "-t"])
+        _, out, _ = run_main(
+            ["-p", "A", "-r", self.repo("cycle.txt"), "-t", "--print-graph"])
         self.assertIn("Cyclic dependencies found (1):", out)
         self.assertIn("  A -> B -> C -> A", out)
 
     def test_other_root(self):
         """Анализ другого пакета того же файла."""
         _, out, _ = run_main(
-            ["-p", "X", "-r", self.repo("complex.txt"), "-t"])
+            ["-p", "X", "-r", self.repo("complex.txt"), "-t",
+             "--print-graph"])
         self.assertIn("Dependency graph of X: 2 packages, 1 edges", out)
 
     def test_package_not_in_test_repo(self):
@@ -115,7 +119,8 @@ class GraphModeTest(unittest.TestCase):
     def test_broken_test_repo(self):
         """Ошибка в файле: сообщение с номером строки, код 1."""
         with temp_file("A: B\nbroken\n") as path:
-            code, _, err = run_main(["-p", "A", "-r", path, "-t"])
+            code, _, err = run_main(
+                ["-p", "A", "-r", path, "-t", "--print-graph"])
         self.assertEqual(code, EXIT_FAILURE)
         self.assertIn("line 2", err)
 
@@ -128,7 +133,8 @@ class GraphModeTest(unittest.TestCase):
 
     def test_real_mode_graph(self):
         """Граф по индексу apt: виртуальные пакеты и цикл libc6."""
-        _, out, _ = run_main(["-p", "libc6", "-r", INDEX_URL])
+        _, out, _ = run_main(
+            ["-p", "libc6", "-r", INDEX_URL, "--print-graph"])
         self.assertIn("Dependency graph of libc6: 2 packages, 2 edges", out)
         self.assertIn("libc6 -> libgcc-s1 -> libc6", out)
 

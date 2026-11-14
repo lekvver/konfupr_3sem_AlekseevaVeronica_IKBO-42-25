@@ -1,13 +1,21 @@
 """Точка входа: разбор параметров и запуск этапов работы."""
 
+import os
 import sys
 from typing import List, Optional, Sequence
 
 from depgraph.apt import load_repository
 from depgraph.config import Config, parse_config
-from depgraph.errors import ConfigError, DepGraphError, PackageNotFoundError
+from depgraph.d2 import cycle_edges, to_d2
+from depgraph.errors import (
+    ConfigError,
+    DepGraphError,
+    PackageNotFoundError,
+    RenderError,
+)
 from depgraph.graph import Graph, build_graph, count_edges, find_cycles
 from depgraph.order import load_order
+from depgraph.render import render_svg
 from depgraph.repository import Repository
 from depgraph.testrepo import load_test_repo
 
@@ -93,6 +101,41 @@ def load_repo(config: Config) -> Repository:
     return repo
 
 
+def d2_path_for(svg_path: str) -> str:
+    """Путь к файлу с текстом D2: рядом с изображением, расширение .d2."""
+    return os.path.splitext(svg_path)[0] + ".d2"
+
+
+def write_text(path: str, text: str) -> None:
+    """Записывает текстовый файл в UTF-8."""
+    try:
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(text)
+    except OSError as error:
+        raise RenderError(f"cannot write {path}: {error}") from error
+
+
+def draw_graph(config: Config, graph: Graph) -> int:
+    """Записывает текст D2 и строит по нему SVG-изображение."""
+    d2_path = d2_path_for(config.output)
+    write_text(d2_path, to_d2(graph, config.package))
+    print(f"D2 text saved to {d2_path}")
+    render_svg(d2_path, config.output)
+    print(f"SVG image saved to {config.output}")
+    cyclic = len(cycle_edges(graph, config.package))
+    print(
+        f"{len(graph)} packages, {count_edges(graph)} edges, "
+        f"{cyclic} of them in cycles (red)"
+    )
+    return EXIT_OK
+
+
+def show(lines: List[str]) -> int:
+    """Печатает строки отчёта."""
+    print("\n".join(lines))
+    return EXIT_OK
+
+
 def run(argv: Optional[Sequence[str]]) -> int:
     """Выполняет работу программы; ошибки передаёт вызывающему."""
     config = parse_config(argv)
@@ -100,15 +143,13 @@ def run(argv: Optional[Sequence[str]]) -> int:
         print("\n".join(format_params(config)))
     repo = load_repo(config)
     if config.direct:
-        lines = direct_dependencies_report(repo, config.package)
-    else:
-        graph = build_graph(config.package, repo)
-        if config.load_order:
-            lines = load_order_report(graph, config.package)
-        else:
-            lines = graph_report(graph, config.package)
-    print("\n".join(lines))
-    return EXIT_OK
+        return show(direct_dependencies_report(repo, config.package))
+    graph = build_graph(config.package, repo)
+    if config.load_order:
+        return show(load_order_report(graph, config.package))
+    if config.print_graph:
+        return show(graph_report(graph, config.package))
+    return draw_graph(config, graph)
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:

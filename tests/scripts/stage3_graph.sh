@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Этап 3: граф зависимостей (BFS с рекурсией), циклы, тестовый режим.
+# Текстовый вывод графа включается параметром --print-graph.
 # shellcheck source=tests/scripts/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 run_repo() {
     # run_repo ФАЙЛ ПАКЕТ: запуск в тестовом режиме.
-    run_tool -p "$2" -r "${REPOS_DIR}/$1" --test-mode
+    run_tool -p "$2" -r "${REPOS_DIR}/$1" --test-mode --print-graph
 }
 
 show_case "цепочка A -> B -> C -> D (транзитивные зависимости)"
@@ -76,7 +77,7 @@ expect_output "package 'Q' not found"
 
 show_case "ошибки в файле тестового репозитория"
 printf 'A: B\nB C\n' > "${TMP_DIR}/no_colon.txt"
-run_tool -p A -r "${TMP_DIR}/no_colon.txt" -t
+run_tool -p A -r "${TMP_DIR}/no_colon.txt" -t --print-graph
 expect_status 1
 expect_output "line 2: expected"
 printf 'A: b\n' > "${TMP_DIR}/lower.txt"
@@ -100,7 +101,7 @@ expect_output "Direct dependencies of A (2):"
 NOBLE="http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/"
 if curl -sfI -m 10 "${NOBLE}Packages.gz" > /dev/null; then
     show_case "реальный репозиторий: libc6 (цикл libc6 <-> libgcc-s1)"
-    run_tool -p libc6 -r "${NOBLE}"
+    run_tool -p libc6 -r "${NOBLE}" --print-graph
     expect_status 0
     expect_output "libc6 -> libgcc-s1 -> libc6"
 else

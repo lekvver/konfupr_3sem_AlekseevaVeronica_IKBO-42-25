@@ -1,0 +1,17 @@
+direction: right
+
+"bash": {style.fill: "#fde68a"}
+"bash" -> "libc6"
+"bash" -> "libtinfo6"
+"bash" -> "base-files"
+"bash" -> "debianutils"
+"libc6" -> "libgcc-s1": {style.stroke: "#d62728"}
+"libtinfo6" -> "libc6"
+"base-files" -> "mawk"
+"base-files" -> "libc6"
+"base-files" -> "libcrypt1"
+"debianutils" -> "libc6"
+"libgcc-s1" -> "gcc-14-base"
+"libgcc-s1" -> "libc6": {style.stroke: "#d62728"}
+"mawk" -> "libc6"
+"libcrypt1" -> "libc6"

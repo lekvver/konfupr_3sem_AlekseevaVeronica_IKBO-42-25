@@ -19,3 +19,7 @@ class PackageNotFoundError(RepositoryError):
 
 class GraphError(DepGraphError):
     """Ошибка построения или обработки графа зависимостей."""
+
+
+class RenderError(DepGraphError):
+    """Не удалось получить изображение графа."""

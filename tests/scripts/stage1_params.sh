@@ -8,14 +8,16 @@ LOCAL="file://${TESTS_DIR}/data/index"
 printf 'A: B\nB:\n' > "${TMP_DIR}/repo.txt"
 
 show_case "все параметры заданы: вывод ключ = значение"
-run_tool -p base -r "${LOCAL}" -o "${TMP_DIR}/g.svg" --print-params
+run_tool -p base -r "${LOCAL}" -o "${TMP_DIR}/g.svg" --print-params \
+    --direct
 expect_status 0
 expect_output "package   = base"
 expect_output "test_mode = false"
 expect_output "output    = ${TMP_DIR}/g.svg"
 
 show_case "тестовый режим: --repo задаёт путь к файлу"
-run_tool -p A -r "${TMP_DIR}/repo.txt" --test-mode --print-params
+run_tool -p A -r "${TMP_DIR}/repo.txt" --test-mode --print-params \
+    --direct
 expect_output "test_mode = true"
 expect_output "output    = graph.svg"
 

@@ -17,6 +17,7 @@ from depgraph.errors import RepositoryError
 
 TIMEOUT_SECONDS = 60
 HTTP_NOT_FOUND = 404
+CONTINUATION_CHARS = " \t"
 INDEX_NAMES = ("Packages.gz", "Packages.xz", "Packages")
 KEPT_FIELDS = (
     "Package", "Version", "Priority", "Pre-Depends", "Depends", "Provides",
@@ -75,7 +76,7 @@ def _paragraphs(text: str) -> Iterator[Dict[str, str]]:
             if fields:
                 yield fields
             fields, key = {}, ""
-        elif line[0] in " \t":
+        elif line[0] in CONTINUATION_CHARS:
             if key in fields:
                 fields[key] += " " + line.strip()
         else:

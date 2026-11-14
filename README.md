@@ -19,6 +19,7 @@
 | 2    | Сбор данных: прямые зависимости из индекса apt  |
 | 3    | Граф зависимостей (BFS с рекурсией), циклы, тестовый режим |
 | 4    | Порядок загрузки зависимостей, сравнение с apt  |
+| 5    | Визуализация: текст D2 и SVG, сравнение с apt-cache |
 
 Структура проекта:
 
@@ -26,6 +27,7 @@
 src/depgraph/   исходный код
 tests/          модульные тесты (test_*.py)
 tests/scripts/  bash-сценарии, которые запускают инструмент из ОС
+examples/       тексты D2 для трёх реальных пакетов (nano, bash, curl)
 tests/data/     локальный индекс Packages для тестов без сети
 tests/repos/    тестовые репозитории (файлы с графами)
 Makefile, run.sh   запуск и тесты
@@ -38,7 +40,8 @@ Makefile, run.sh   запуск и тесты
 | `-p`, `--package`     | Имя анализируемого пакета                        | обязателен   |
 | `-r`, `--repo`        | URL репозитория или путь к файлу тестового репозитория | обязателен |
 | `-t`, `--test-mode`   | Режим тестового репозитория: `--repo` — путь к файлу | выключен |
-| `-o`, `--output`      | Имя файла с изображением графа (`.svg`)          | `graph.svg`  |
+| `-o`, `--output`      | Имя файла с изображением графа (`.svg`); рядом создаётся `.d2` | `graph.svg` |
+| `--print-graph`       | Вывести граф текстом вместо изображения (этап 3) | выключен     |
 | `--direct`            | Вывести только прямые зависимости (этап 2)       | выключен     |
 | `--load-order`        | Вывести порядок загрузки зависимостей (этап 4)   | выключен     |
 | `--print-params`      | Вывести все параметры в формате «ключ = значение» | выключен    |
@@ -96,7 +99,8 @@ output    = graph.svg
 
 ### Граф зависимостей (этап 3)
 
-По умолчанию строится граф всех транзитивных зависимостей пакета и
+Граф всех транзитивных зависимостей пакета строится всегда. С параметром
+`--print-graph` (на этапе 3 это было поведением по умолчанию) он
 выводится списком смежности (пакеты — в порядке обхода в ширину), затем
 сообщаются найденные циклы:
 
@@ -223,9 +227,87 @@ bash            bash
    (используется один). Выбор поставщика виртуального пакета
    (например, `awk` -> `mawk`) инструмент повторяет по приоритету.
 
+### Визуализация (этап 5)
+
+Без дополнительных параметров инструмент строит граф и сохраняет:
+
+1. текстовое представление на языке диаграмм [D2](https://d2lang.com) —
+   файл с тем же именем, что у изображения, но с расширением `.d2`
+   (`graph.svg` -> `graph.d2`; `src/depgraph/d2.py`);
+2. SVG-изображение — его строит программа `d2` из этого текста
+   (`src/depgraph/render.py`).
+
+Правила диаграммы: стрелка `A -> B` означает «пакет A зависит от B»;
+анализируемый пакет закрашен жёлтым; рёбра, входящие в циклы, красные
+(в том числе петля пакета на самого себя). Имена пакетов записываются в
+кавычках, потому что точка в D2 означает вложенность, а имена вроде
+`python3.12` и `libstdc++6` содержат точки и плюсы.
+
+Программа `d2` — единственный внешний инструмент, только для рисования
+(зависимости она не получает). Установка: <https://d2lang.com/tour/install>
+(Linux/macOS: `curl -fsSL https://d2lang.com/install.sh | sh -s --`).
+Если `d2` нет, `.d2`-файл всё равно сохраняется, а программа сообщает
+об ошибке (код 1). Другое имя или путь к программе можно задать
+переменной окружения `DEPGRAPH_D2`.
+
+Три примера для реальных пакетов Ubuntu 24.04 (noble, main) лежат в
+`examples/*.d2`; изображение получается командой
+`d2 examples/nano.d2 nano.svg` или самим инструментом:
+
+| Пакет | Пакетов | Рёбер | Рёбер в циклах | Цикл                    |
+|-------|--------:|------:|---------------:|-------------------------|
+| nano  | 6       | 9     | 2              | libc6 <-> libgcc-s1     |
+| bash  | 9       | 14    | 2              | libc6 <-> libgcc-s1     |
+| curl  | 32      | 81    | 2              | libc6 <-> libgcc-s1     |
+
+```
+./run.sh -p nano -r http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/ -o nano.svg
+./run.sh -p bash -r http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/ -o bash.svg
+./run.sh -p curl -r http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/ -o curl.svg
+```
+
+SVG-файлы в репозиторий не добавляются (`.gitignore`): D2 встраивает в
+них шрифты длинными строками.
+
+#### Сравнение со штатными средствами apt
+
+Скрипт `tests/scripts/compare_apt_graph.sh ПАКЕТ [СЬЮТ]` сравнивает граф
+с `apt-cache dotty` (рисунок Graphviz) и `apt-cache depends --recurse` на
+том же индексе `noble main` (изолированная настройка apt, как в
+`compare_apt.sh`). Связи Suggests в `dotty` (зелёные) не учитываются,
+потому что инструмент их не рисует.
+
+| Пакет | Рёбер dotty (без Suggests) | Рёбер инструмента | `depends --recurse`, пакетов | Пакетов инструмента |
+|-------|---------------------------:|------------------:|-----------------------------:|--------------------:|
+| nano  | 9                          | 9                 | 6                            | 6                   |
+| bash  | 13                         | 14                | 15                           | 9                   |
+| curl  | 81                         | 81                | 32                           | 32                  |
+
+У `nano` графы совпадают полностью. Причины расхождений:
+
+1. **Виртуальные пакеты.** `dotty` рисует виртуальный пакет отдельной
+   вершиной (`awk`, `libssl3`, `libnettle8`) и дальше не раскрывает.
+   Инструмент заменяет его настоящим поставщиком: `awk` -> `mawk`,
+   `libssl3` -> `libssl3t64`. Поэтому у `bash` рёбра
+   `base-files -> awk` (dotty) и `base-files -> mawk`, `mawk -> libc6`
+   (инструмент), а у `curl` четыре ребра различаются только именем
+   (`libssl3` и `libssl3t64`, `libnettle8` и `libnettle8t64` и т.д.).
+2. **Альтернативы.** `apt-cache depends --recurse` раскрывает все
+   варианты виртуального пакета: для `awk` — и `gawk`, и `mawk` со всеми
+   их зависимостями (15 пакетов у `bash`). Инструмент, как и `apt` при
+   установке, выбирает один вариант (самый приоритетный, `mawk`), и в
+   графе 9 пакетов, как в списке установки `apt-get -s install`.
+3. **Suggests.** `dotty` добавляет зелёные рёбра Suggests (21, 27 и 54
+   ребра у nano, bash и curl), которых нет в Depends; инструмент учитывает
+   только Pre-Depends и Depends.
+4. **Оформление.** `dotty` не выделяет циклы (`libc6 <-> libgcc-s1`
+   нарисован обычными рёбрами) и склеивает рёбра (`concentrate=true`);
+   инструмент красит рёбра циклов и выделяет анализируемый пакет. Рисует
+   Graphviz у `dotty` и D2 у инструмента, поэтому раскладка отличается.
+
 ## 3. Сборка и запуск тестов
 
-Сборка не нужна. Требуется только Python 3.9+.
+Сборка не нужна. Требуется Python 3.9+; для SVG — программа `d2`.
 
 ```
 ./run.sh -p bash -r http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/
@@ -247,7 +329,12 @@ Direct dependencies of bash 5.2.21-2ubuntu4 (4):
   base-files
   debianutils
 
-$ ./run.sh -p A -r tests/repos/two_cycles.txt --test-mode
+$ ./run.sh -p bash -r http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/ -o bash.svg
+D2 text saved to bash.d2
+SVG image saved to bash.svg
+9 packages, 14 edges, 2 of them in cycles (red)
+
+$ ./run.sh -p A -r tests/repos/two_cycles.txt --test-mode --print-graph
 Dependency graph of A: 4 packages, 6 edges
   A: B, C
   B: A, D
@@ -257,7 +344,7 @@ Cyclic dependencies found (2):
   A -> B -> A
   B -> D -> B
 
-$ ./run.sh -p libc6 -r http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/
+$ ./run.sh -p libc6 -r http://archive.ubuntu.com/ubuntu/dists/noble/main/binary-amd64/ --print-graph
 Dependency graph of libc6: 3 packages, 3 edges
   libc6: libgcc-s1
   libgcc-s1: gcc-14-base, libc6
@@ -274,4 +361,6 @@ try: depgraph --help
 этап 2: `bash tests/scripts/stage2_direct.sh`;
 этап 3: `bash tests/scripts/stage3_graph.sh`;
 этап 4: `bash tests/scripts/stage4_order.sh` (сравнение с apt:
-`bash tests/scripts/compare_apt.sh nano`).
+`bash tests/scripts/compare_apt.sh nano`);
+этап 5: `bash tests/scripts/stage5_visual.sh` (сравнение с apt-cache:
+`bash tests/scripts/compare_apt_graph.sh bash`).

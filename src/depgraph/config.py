@@ -11,7 +11,8 @@ from depgraph.errors import ConfigError
 
 DEFAULT_OUTPUT = "graph.svg"
 SVG_SUFFIX = ".svg"
-URL_SCHEMES = ("http", "https", "file")
+FILE_SCHEME = "file"
+URL_SCHEMES = ("http", "https", FILE_SCHEME)
 APT_NAME = re.compile(r"[a-z0-9][a-z0-9+.\-]+")
 TEST_NAME = re.compile(r"[A-Z]+")
 
@@ -27,6 +28,7 @@ class Config:
     print_params: bool = False
     direct: bool = False
     load_order: bool = False
+    print_graph: bool = False
 
     def as_pairs(self) -> List[Tuple[str, str]]:
         """Возвращает параметры как пары (ключ, значение) для вывода."""
@@ -81,6 +83,10 @@ def build_parser() -> argparse.ArgumentParser:
         "--load-order", action="store_true",
         help="вывести порядок загрузки зависимостей пакета (этап 4)",
     )
+    parser.add_argument(
+        "--print-graph", action="store_true",
+        help="вывести граф текстом вместо построения изображения (этап 3)",
+    )
     return parser
 
 
@@ -105,7 +111,7 @@ def check_repo_url(url: str) -> None:
             f"invalid repository URL {url!r}: expected http://, https:// "
             "or file:// (use --test-mode to read a test repository file)"
         )
-    if not parts.netloc and parts.scheme != "file":
+    if not parts.netloc and parts.scheme != FILE_SCHEME:
         raise ConfigError(f"invalid repository URL {url!r}: no host")
 
 
@@ -147,9 +153,12 @@ def check_output(path: str) -> None:
 
 
 def check_actions(config: Config) -> None:
-    """Режимы --direct и --load-order нельзя включить одновременно."""
-    if config.direct and config.load_order:
-        raise ConfigError("--direct and --load-order are mutually exclusive")
+    """Режимы --direct, --load-order и --print-graph несовместимы."""
+    chosen = [config.direct, config.load_order, config.print_graph]
+    if sum(chosen) > 1:
+        raise ConfigError(
+            "--direct, --load-order and --print-graph are mutually exclusive"
+        )
 
 
 def validate(config: Config) -> None:
@@ -171,6 +180,7 @@ def parse_config(argv: Optional[Sequence[str]] = None) -> Config:
         print_params=args.print_params,
         direct=args.direct,
         load_order=args.load_order,
+        print_graph=args.print_graph,
     )
     validate(config)
     return config
